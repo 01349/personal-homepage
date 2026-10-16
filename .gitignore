@@ -1,0 +1,7 @@
+# 仅部署 index.html + vendor/，以下为旧实验残留，不纳入仓库
+node_modules/
+dist/
+MySQL-Front/
+components/
+.vscode/
+*.log

@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>个人主页 · Vue 3 + Vue Router + Pinia + Element Plus</title>
+
+  <!-- ============================================================
+       依赖说明（全部本地 vendor，双击本文件即可运行，无需构建工具）
+       1) Vue / Vue Router 使用【开发版】(dev) 而非 prod 版：
+          prod 版会关闭 __VUE_PROD_DEVTOOLS__，Vue DevTools 无法识别应用，
+          无法在 Pinia 面板里观察 store 状态，故使用 dev 版。
+       2) Pinia 使用官方 IIFE 全局构建（全局变量 Pinia）。
+          Pinia 的 IIFE 构建把 vue-demi 当外部依赖，
+          因此在引入 pinia 之前先手写一个 VueDemi 垫片。
+       3) Element Plus 使用官方全量构建（全局变量 ElementPlus）：
+          app.use(ElementPlus) 会自动全局注册所有 ElXxx 组件。
+          另引入 @element-plus/icons-vue（全局 ElementPlusIconsVue）与中文语言包。
+       ============================================================ -->
+  <link rel="stylesheet" href="vendor/element-plus.css" />
+  <link rel="stylesheet" href="vendor/element-plus-dark.css" />
+
+  <script src="vendor/vue.global.dev.js"></script>
+  <script src="vendor/vue-router.global.dev.js"></script>
+  <script>
+    /* vue-demi 垫片：Pinia 的 IIFE 构建以全局 VueDemi 作为外部依赖。
+       Vue3 环境下 vue-demi 本质就是把 Vue 的 API 原样转发。 */
+    var VueDemi = {
+      isVue2: false,
+      isVue3: true,
+      effectScope: Vue.effectScope,
+      getCurrentScope: Vue.getCurrentScope,
+      hasInjectionContext: Vue.hasInjectionContext,
+      getCurrentInstance: Vue.getCurrentInstance,
+      inject: Vue.inject,
+      isReactive: Vue.isReactive,
+      isRef: Vue.isRef,
+      markRaw: Vue.markRaw,
+      nextTick: Vue.nextTick,
+      onScopeDispose: Vue.onScopeDispose,
+      reactive: Vue.reactive,
+      ref: Vue.ref,
+      toRaw: Vue.toRaw,
+      toRef: Vue.toRef,
+      toRefs: Vue.toRefs,
+      unref: Vue.unref,
+      watch: Vue.watch,
+      computed: Vue.computed
+    };
+  </script>
+  <script src="vendor/pinia.iife.js"></script>
+  <script src="vendor/element-plus.full.min.js"></script>
+  <script src="vendor/element-plus-icons.iife.min.js"></script>
+  <script src="vendor/element-plus-zh-cn.js"></script>
+
+  <style>
+    /* 说明：Element Plus 自带完整的 CSS 变量体系（--el-*），
+       暗色主题由 dark/css-vars.css 提供，只需给 <html> 加上 dark 类即可切换。
+       因此这里只写少量布局样式，颜色全部复用 EP 变量，自动跟随主题。 */
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+      background-color: var(--el-bg-color-page);
+      color: var(--el-text-color-primary);
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /* 顶部导航：el-container > el-header */
+    .app-header {
+      height: auto;
+      padding: 0;
+      border-bottom: 1px solid var(--el-border-color);
+      background-color: var(--el-bg-color);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-inner {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+    }
+    .site-brand { font-size: 18px; font-weight: bold; color: var(--el-color-primary); white-space: nowrap; }
+    /* 让 el-menu 自适应宽度并去掉默认底边框 */
+    .header-inner .el-menu { flex: 1; border-bottom: none !important; }
+    .header-tools { display: flex; align-items: center; gap: 10px; }
+
+    /* 主内容区 */
+    .app-main { max-width: 1080px; width: 100%; margin: 0 auto; padding: 24px 16px 48px; }
+    .app-footer {
+      height: auto;
+      padding: 18px 16px;
+      text-align: center;
+      color: var(--el-text-color-secondary);
+      font-size: 13px;
+      line-height: 1.8;
+      border-top: 1px solid var(--el-border-color);
+      background-color: var(--el-bg-color);
+    }
+
+    /* 个人信息 */
+    .avatar-row { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+
+    /* 技能 / 技术标签 */
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+    /* 卡片网格 */
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+
+    /* 后台 */
+    .admin-body { padding: 0 20px 20px; }
+    .admin-toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+    .admin-aside { padding: 10px; }
+
+    /* Store 面板 */
+    .store-json {
+      background-color: var(--el-fill-color-light);
+      border-radius: 6px;
+      padding: 10px;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      max-height: 240px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .store-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .filter-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+
+    @media (max-width: 640px) {
+      .header-inner { flex-wrap: wrap; padding: 8px 12px; }
+      .header-inner .el-menu { width: 100%; order: 3; }
+      .card-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script>
+    /* ================================================================
+       综合实验：Vue 3 (Options API) + Vue Router 4 + Pinia 2 + Element Plus 2
+       - 任务 1-7 ：Pinia 状态管理（user / project / article 三个 Store）
+       - 任务 8-11：Element Plus 组件库集成（布局 / 菜单 / 时间线 / 表格 /
+                    表单 / 对话框 等，合计使用 20+ 种组件）
+       运行方式：双击本 index.html 即可（Hash 路由）
+       ================================================================ */
+    const { createApp, ref, computed, watch } = Vue;
+    const { createRouter, createWebHashHistory } = VueRouter;
+    const { createPinia, defineStore, storeToRefs } = Pinia;
+    // 全局构建把反馈类组件挂在 ElementPlus 命名空间下
+    const { ElMessage, ElMessageBox } = ElementPlus;
+    // 语言包 UMD 可能带 default 包装，这里做兼容
+    const zhCn = ElementPlusLocaleZhCn.default || ElementPlusLocaleZhCn;
+
+    /* ================================================================
+       一、持久化工具 + 默认数据
+       ================================================================ */
+    const LS_PREFIX = "exp4_";
+    const storage = {
+      read(key, fallback) {
+        try {
+          const raw = localStorage.getItem(LS_PREFIX + key);
+          return raw === null ? fallback : JSON.parse(raw);
+        } catch (e) {
+          console.warn("读取本地存储失败：" + key, e);
+          return fallback;
+        }
+      },
+      write(key, value) { localStorage.setItem(LS_PREFIX + key, JSON.stringify(value)); },
+      remove(key) { localStorage.removeItem(LS_PREFIX + key); }
+    };
+
+    const defaultPerson = {
+      avatar: "https://picsum.photos/id/1005/110/110",
+      name: "向俊洁",
+      studentId: "249980334",
+      className: "24计科1班",
+      gender: "男",
+      birthday: "2004-05-20",
+      email: "xiangjunjie@school.edu.cn",
+      intro: "热爱前端开发，熟悉 Vue 框架，喜欢钻研网页交互；业余爱好跑步、阅读开源文档，持续学习前端新技术。"
+    };
+    const defaultSkills = ["Vue", "HTML", "CSS", "JavaScript", "Python", "MySQL", "Git", "NodeJs"];
+    /* 时间线数据：用于个人信息页的 el-timeline（任务 9） */
+    const defaultTimeline = [
+      { date: "2024-09-01", title: "进入大学 · 24计科1班", content: "开始系统学习计算机科学与技术专业课程。", type: "primary" },
+      { date: "2024-11-15", title: "第一次接触 Web 前端", content: "学习 HTML / CSS / JavaScript 基础，完成静态个人主页。", type: "success" },
+      { date: "2025-03-20", title: "掌握 Vue3 框架", content: "学习组件化开发与响应式原理，完成实验一、实验二。", type: "success" },
+      { date: "2025-05-10", title: "学习 Vue Router 路由", content: "完成实验三：多页面路由跳转与动态路由参数。", type: "success" },
+      { date: "2026-03-12", title: "引入 Pinia 状态管理", content: "完成实验四：Pinia 状态管理与文章模块。", type: "warning" },
+      { date: "2026-10-16", title: "引入 Element Plus 组件库", content: "完成组件库集成：布局、时间线、表格、表单与对话框。", type: "primary" }
+    ];
+    const defaultProjects = [
+      { id: 1, icon: "🏠", name: "个人主页网站", desc: "基于 Vue3 的个人信息页面，支持亮暗主题切换、本地存储与 JSON 数据导出。", tech: ["Vue3", "Vite", "CSS3"], status: "done" },
+      { id: 2, icon: "📚", name: "图书管理系统", desc: "使用 Vue3 + Node.js 实现的图书借阅管理，支持检索与借还流程。", tech: ["Vue3", "Express", "MySQL"], status: "doing" },
+      { id: 3, icon: "🛒", name: "校园二手交易平台", desc: "面向校园场景的二手物品交易平台，负责前端页面与交互开发。", tech: ["Vue3", "Element Plus", "Axios"], status: "doing" },
+      { id: 4, icon: "✅", name: "待办清单应用", desc: "练习用的 Todo 应用，实现任务的增删改查与本地持久化。", tech: ["Vue3", "localStorage"], status: "done" }
+    ];
+    const defaultArticles = [
+      {
+        id: 1001, cover: "⚡", category: "前端",
+        title: "Vue3 响应式原理浅析：从 reactive 到 Proxy",
+        summary: "梳理 Vue3 用 Proxy 重写响应式系统的原因，以及与 Vue2 Object.defineProperty 的差异。",
+        content: "Vue2 通过 Object.defineProperty 递归遍历对象的每个属性来劫持读写，存在无法监听新增/删除属性、无法监听数组下标变化等缺陷。\n\nVue3 改用 Proxy 代理整个对象，可以拦截 get / set / deleteProperty / ownKeys 等更多操作，天然支持动态增删属性与数组索引访问。\n\n在组件里使用 reactive / ref 声明的数据，被读取时触发依赖收集（track），被修改时触发派发更新（trigger），最终驱动视图重新渲染。",
+        tags: ["Vue3", "响应式", "Proxy"], status: "published", author: "向俊洁", createdAt: "2026-03-02", views: 128
+      },
+      {
+        id: 1002, cover: "🍍", category: "前端",
+        title: "Pinia 与 Vuex 的核心差异",
+        summary: "Pinia 作为 Vue 官方推荐的状态管理库，相比 Vuex 更简洁、对 TypeScript 更友好。",
+        content: "Pinia 去掉了 Vuex 中的 mutation 概念，只有 state / getters / actions 三部分，修改状态直接调用 action 即可。\n\nPinia 的 store 按需创建，没有嵌套模块概念，多个 store 可以互相引用，天然支持代码分割与更好的类型推断。\n\n本实验正是使用 Pinia 把个人信息、项目、文章等共享状态拆分到独立的 store 中统一管理。",
+        tags: ["Pinia", "Vuex", "状态管理"], status: "draft", author: "向俊洁", createdAt: "2026-03-08", views: 0
+      },
+      {
+        id: 1003, cover: "🗄️", category: "数据库",
+        title: "MySQL 索引优化实战笔记",
+        summary: "记录一次慢查询优化过程：从全表扫描到命中联合索引，理解最左前缀原则。",
+        content: "问题背景：订单表数据量达到百万级后，按「用户ID + 下单时间」的查询出现明显卡顿。\n\n排查过程：使用 EXPLAIN 分析执行计划，发现 type=ALL 全表扫描。\n\n优化方案：为 (user_id, created_at) 建立联合索引，查询条件按最左前缀排列后成功命中索引，查询耗时从 1.2s 降到 8ms。\n\n结论：联合索引遵循最左前缀原则，范围查询会导致其右侧的索引列失效。",
+        tags: ["MySQL", "索引", "性能优化"], status: "published", author: "向俊洁", createdAt: "2026-02-20", views: 96
+      },
+      {
+        id: 1004, cover: "🧭", category: "学习笔记",
+        title: "从实验三到实验四：前端状态管理的演进",
+        summary: "回顾实验三用 reactive 全局对象共享状态的局限，说明为什么需要 Pinia。",
+        content: "实验三中，我们把所有共享数据放在一个 reactive 对象里，通过 data() 注入到每个组件。\n\n这种做法在规模小时可行，但随着页面变多会暴露问题：状态与视图强耦合、无法按领域拆分、DevTools 难以追踪。\n\n实验四引入 Pinia 后，状态按领域拆分为 user / project / article 三个 store，配合 storeToRefs 保持响应式。",
+        tags: ["Pinia", "实验总结"], status: "published", author: "向俊洁", createdAt: "2026-03-12", views: 42
+      },
+      {
+        id: 1005, cover: "🧩", category: "前端",
+        title: "Element Plus 组件库快速上手",
+        summary: "记录 Element Plus 的全量引入方式，以及布局、表单、表格、对话框等组件的常见用法。",
+        content: "Element Plus 是面向 Vue3 的桌面端组件库，全量引入时通过 app.use(ElementPlus) 一次性注册所有组件。\n\n常用组件：布局用 el-container / el-header / el-aside / el-main / el-footer；导航用 el-menu；\n表单用 el-form + el-form-item + el-input / el-select；数据展示用 el-table / el-card / el-descriptions；\n交互反馈用 el-dialog / el-message / el-message-box。\n\n配合中文语言包 ElementPlusLocaleZhCn，分页、日期选择等文本会自动显示为中文。",
+        tags: ["Element Plus", "组件库"], status: "published", author: "向俊洁", createdAt: "2026-10-16", views: 18
+      }
+    ];
+
+    /* ================================================================
+       二、Pinia Store（state / getters / actions）
+       ================================================================ */
+
+    /* ---------- Store 1：用户 store ---------- */
+    const useUserStore = defineStore("user", {
+      state: () => ({
+        isLoggedIn: storage.read("isLoggedIn", false),
+        username: storage.read("username", ""),
+        person: storage.read("person", { ...defaultPerson }),
+        skills: storage.read("skills", [...defaultSkills]),
+        timeline: storage.read("timeline", defaultTimeline.map((t) => ({ ...t }))),
+        isDarkMode: storage.read("isDarkMode", false)
+      }),
+      getters: {
+        isAdmin: (state) => state.isLoggedIn,
+        skillCount: (state) => state.skills.length,
+        displayName: (state) => state.username || state.person.name,
+        // 时间线按日期倒序（新的在前）
+        timelineSorted: (state) => [...state.timeline].sort((a, b) => (a.date < b.date ? 1 : -1))
+      },
+      actions: {
+        login(password) {
+          if (password !== "admin") return false;
+          this.isLoggedIn = true;
+          this.username = "管理员";
+          storage.write("isLoggedIn", true);
+          storage.write("username", this.username);
+          return true;
+        },
+        logout() {
+          this.isLoggedIn = false;
+          this.username = "";
+          storage.remove("isLoggedIn");
+          storage.remove("username");
+        },
+        updatePerson(form) {
+          Object.assign(this.person, form);
+          storage.write("person", this.person);
+        },
+        addSkill(skill) {
+          const name = (skill || "").trim();
+          if (!name) return { ok: false, msg: "技能不能为空" };
+          if (this.skills.some((s) => s.toLowerCase() === name.toLowerCase()))
+            return { ok: false, msg: "该技能已存在：" + name };
+          this.skills.push(name);
+          storage.write("skills", this.skills);
+          return { ok: true };
+        },
+        removeSkill(skill) {
+          const idx = this.skills.indexOf(skill);
+          if (idx === -1) return;
+          this.skills.splice(idx, 1);
+          storage.write("skills", this.skills);
+        },
+        addTimeline(event) {
+          this.timeline.push({
+            date: event.date || new Date().toISOString().slice(0, 10),
+            title: event.title,
+            content: event.content || "",
+            type: event.type || "primary"
+          });
+          storage.write("timeline", this.timeline);
+        },
+        toggleTheme() {
+          this.isDarkMode = !this.isDarkMode;
+          storage.write("isDarkMode", this.isDarkMode);
+          this.applyTheme();
+        },
+        /* 同步主题：Element Plus 用 html.dark 切换暗色变量 */
+        applyTheme() {
+          const html = document.documentElement;
+          html.setAttribute("data-theme", this.isDarkMode ? "dark" : "light");
+          html.classList.toggle("dark", this.isDarkMode);
+        },
+        resetUser() {
+          Object.assign(this.person, defaultPerson);
+          this.skills.splice(0, this.skills.length, ...defaultSkills);
+          this.timeline.splice(0, this.timeline.length, ...defaultTimeline.map((t) => ({ ...t })));
+          storage.remove("person");
+          storage.remove("skills");
+          storage.remove("timeline");
+        }
+      }
+    });
+
+    /* ---------- Store 2：项目 store ---------- */
+    const useProjectStore = defineStore("project", {
+      state: () => ({
+        projects: storage.read("projects", defaultProjects.map((p) => ({ ...p })))
+      }),
+      getters: {
+        total: (state) => state.projects.length,
+        doneCount: (state) => state.projects.filter((p) => p.status === "done").length,
+        doingCount: (state) => state.projects.filter((p) => p.status === "doing").length,
+        // 项目完成率（用于 el-progress），无数据时返回 0
+        doneRate: (state) =>
+          state.projects.length === 0 ? 0 : Math.round((state.projects.filter((p) => p.status === "done").length / state.projects.length) * 100),
+        techStats: (state) => {
+          const map = {};
+          state.projects.forEach((p) => p.tech.forEach((t) => { map[t] = (map[t] || 0) + 1; }));
+          return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 8);
+        },
+        getById: (state) => (id) => state.projects.find((p) => p.id === Number(id))
+      },
+      actions: {
+        addProject(project) {
+          const item = {
+            id: Date.now(),
+            icon: project.icon || "📦",
+            name: project.name,
+            desc: project.desc || "新添加的项目，介绍待补充。",
+            tech: project.tech || ["待定"],
+            status: project.status || "doing"
+          };
+          this.projects.push(item);
+          this.persist();
+          return item;
+        },
+        updateProject(id, patch) {
+          const target = this.projects.find((p) => p.id === Number(id));
+          if (!target) return false;
+          Object.assign(target, patch);
+          this.persist();
+          return true;
+        },
+        deleteProject(id) {
+          const idx = this.projects.findIndex((p) => p.id === Number(id));
+          if (idx === -1) return false;
+          this.projects.splice(idx, 1);
+          this.persist();
+          return true;
+        },
+        persist() { storage.write("projects", this.projects); },
+        resetProjects() {
+          this.projects.splice(0, this.projects.length, ...defaultProjects.map((p) => ({ ...p })));
+          storage.remove("projects");
+        }
+      }
+    });
+
+    /* ---------- Store 3：文章 store ---------- */
+    const useArticleStore = defineStore("article", {
+      state: () => ({
+        articles: storage.read("articles", defaultArticles.map((a) => ({ ...a })))
+      }),
+      getters: {
+        total: (state) => state.articles.length,
+        publishedArticles: (state) => state.articles.filter((a) => a.status === "published"),
+        draftArticles: (state) => state.articles.filter((a) => a.status === "draft"),
+        publishedCount() { return this.publishedArticles.length; },
+        draftCount() { return this.draftArticles.length; },
+        sortedArticles: (state) => [...state.articles].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+        categories: (state) => [...new Set(state.articles.map((a) => a.category))],
+        getById: (state) => (id) => state.articles.find((a) => a.id === Number(id))
+      },
+      actions: {
+        addArticle(payload) {
+          const item = {
+            id: Date.now(),
+            cover: payload.cover || "📝",
+            title: payload.title,
+            category: payload.category || "未分类",
+            summary: payload.summary || "",
+            content: payload.content || "",
+            tags: payload.tags || [],
+            status: payload.status || "draft",
+            author: payload.author || "向俊洁",
+            createdAt: payload.createdAt || new Date().toISOString().slice(0, 10),
+            views: 0
+          };
+          this.articles.unshift(item);
+          this.persist();
+          return item;
+        },
+        updateArticle(id, patch) {
+          const target = this.articles.find((a) => a.id === Number(id));
+          if (!target) return false;
+          Object.assign(target, patch);
+          this.persist();
+          return true;
+        },
+        deleteArticle(id) {
+          const idx = this.articles.findIndex((a) => a.id === Number(id));
+          if (idx === -1) return false;
+          this.articles.splice(idx, 1);
+          this.persist();
+          return true;
+        },
+        togglePublish(id) {
+          const target = this.articles.find((a) => a.id === Number(id));
+          if (!target) return false;
+          target.status = target.status === "published" ? "draft" : "published";
+          this.persist();
+          return target.status;
+        },
+        addView(id) {
+          const target = this.articles.find((a) => a.id === Number(id));
+          if (target) target.views += 1;
+        },
+        persist() { storage.write("articles", this.articles); },
+        resetArticles() {
+          this.articles.splice(0, this.articles.length, ...defaultArticles.map((a) => ({ ...a })));
+          storage.remove("articles");
+        }
+      }
+    });
+
+    /* ================================================================
+       三、Element Plus 布局组件：顶部导航
+       ================================================================ */
+    const AppHeader = {
+      setup() {
+        const userStore = useUserStore();
+        const { isLoggedIn, isDarkMode, displayName } = storeToRefs(userStore);
+        return { isLoggedIn, isDarkMode, displayName };
+      },
+      computed: {
+        activeIndex() { return this.$route.path; },
+        navs() {
+          const list = [
+            { path: "/home", label: "首页", icon: "HomeFilled" },
+            { path: "/projects", label: "项目中心", icon: "Folder" },
+            { path: "/articles", label: "文章", icon: "Notebook" },
+            { path: "/stores", label: "Store 面板", icon: "DataLine" },
+            { path: "/about", label: "关于", icon: "InfoFilled" }
+          ];
+          if (this.isLoggedIn) list.push({ path: "/admin", label: "后台管理", icon: "Setting" });
+          return list;
+        }
+      },
+      methods: {
+        onThemeChange(val) {
+          // el-switch 的值变化时调用 store action，保持「视图 → action」单一数据流
+          const userStore = useUserStore();
+          if (val !== userStore.isDarkMode) userStore.toggleTheme();
+        },
+        onCommand(cmd) {
+          if (cmd === "logout") {
+            ElMessageBox.confirm("确定退出登录吗？", "提示", { type: "warning", confirmButtonText: "退出", cancelButtonText: "取消" })
+              .then(() => {
+                useUserStore().logout();
+                ElMessage.success("已退出登录");
+                this.$router.push({ name: "Home" });
+              })
+              .catch(() => {});
+          } else if (cmd === "profile") {
+            this.$router.push({ name: "Admin" });
+          }
+        }
+      },
+      template: `
+        <header class="app-header">
+          <div class="header-inner">
+            <span class="site-brand">📚 个人主页</span>
+            <!-- el-menu：导航菜单组件，router 模式下 index 即路由路径 -->
+            <el-menu :default-active="activeIndex" mode="horizontal" router :ellipsis="false">
+              <el-menu-item v-for="n in navs" :key="n.path" :index="n.path">
+                <el-icon><component :is="n.icon" /></el-icon>
+                <span>{{ n.label }}</span>
+              </el-menu-item>
+            </el-menu>
+            <div class="header-tools">
+              <!-- el-switch：主题开关 -->
+              <el-switch v-model="isDarkMode" inline-prompt active-text="暗" inactive-text="亮" @change="onThemeChange" />
+              <!-- el-dropdown：登录后的用户下拉菜单 -->
+              <el-dropdown v-if="isLoggedIn" @command="onCommand">
+                <el-button type="primary" size="small">
+                  {{ displayName }}<el-icon><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="profile">后台管理</el-dropdown-item>
+                    <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-button v-else type="primary" size="small" @click="$router.push({ name: 'Login' })">登录</el-button>
+            </div>
+          </div>
+        </header>
+      `
+    };
+
+    const AppFooter = {
+      template: `
+        <footer class="app-footer">
+          <div>© 2026 个人主页 · Vue 3 + Vue Router 4 + Pinia 2 + Element Plus 2</div>
+          <div>实验四/五 · Pinia 状态管理 + Element Plus 组件库集成</div>
+        </footer>
+      `
+    };
+
+    /* ================================================================
+       四、可复用组件
+       ================================================================ */
+
+    /* 文章表单对话框：el-dialog + el-form，实现新增 / 编辑（任务 10） */
+    const ArticleDialog = {
+      props: { modelValue: Boolean, article: { type: Object, default: null } },
+      emits: ["update:modelValue", "saved"],
+      setup() {
+        const articleStore = useArticleStore();
+        return { articleStore };
+      },
+      data() {
+        return {
+          form: { cover: "📝", title: "", category: "前端", summary: "", content: "", tags: "", status: "draft" },
+          rules: {
+            title: [{ required: true, message: "请输入文章标题", trigger: "blur" }],
+            content: [{ required: true, message: "请输入文章正文", trigger: "blur" }]
+          },
+          categoryOptions: ["前端", "后端", "数据库", "学习笔记", "未分类"]
+        };
+      },
+      computed: {
+        visible: {
+          get() { return this.modelValue; },
+          set(v) { this.$emit("update:modelValue", v); }
+        },
+        isEdit() { return !!this.article; },
+        title() { return this.isEdit ? "编辑文章" : "新增文章"; }
+      },
+      watch: {
+        modelValue(v) {
+          if (!v) return;
+          // 打开时按当前文章填充表单；新增则重置
+          if (this.article) {
+            this.form = { ...this.article, tags: (this.article.tags || []).join(", ") };
+          } else {
+            this.form = { cover: "📝", title: "", category: "前端", summary: "", content: "", tags: "", status: "draft" };
+          }
+        }
+      },
+      methods: {
+        onSave() {
+          this.$refs.formRef.validate((valid) => {
+            if (!valid) return;
+            const tagsArr = this.form.tags.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+            const payload = {
+              cover: this.form.cover,
+              title: this.form.title.trim(),
+              category: this.form.category,
+              summary: this.form.summary.trim() || this.form.content.trim().slice(0, 60),
+              content: this.form.content.trim(),
+              tags: tagsArr,
+              status: this.form.status
+            };
+            if (this.isEdit) {
+              this.articleStore.updateArticle(this.article.id, payload);
+              ElMessage.success("文章已更新");
+            } else {
+              this.articleStore.addArticle(payload);
+              ElMessage.success("文章已新增");
+            }
+            this.visible = false;
+            this.$emit("saved");
+          });
+        }
+      },
+      template: `
+        <el-dialog v-model="visible" :title="title" width="600px" append-to-body>
+          <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+            <el-form-item label="封面图标">
+              <el-input v-model="form.cover" placeholder="例如：📝" style="width:140px;" />
+            </el-form-item>
+            <el-form-item label="标题" prop="title">
+              <el-input v-model="form.title" placeholder="请输入文章标题" />
+            </el-form-item>
+            <el-form-item label="分类">
+              <el-select v-model="form.category" style="width:180px;">
+                <el-option v-for="c in categoryOptions" :key="c" :label="c" :value="c" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="摘要">
+              <el-input v-model="form.summary" placeholder="不填则自动截取正文前 60 字" />
+            </el-form-item>
+            <el-form-item label="正文" prop="content">
+              <el-input v-model="form.content" type="textarea" :rows="6" placeholder="请输入文章正文" />
+            </el-form-item>
+            <el-form-item label="标签">
+              <el-input v-model="form.tags" placeholder="用逗号分隔，如：Vue3, Pinia" />
+            </el-form-item>
+            <el-form-item label="状态">
+              <el-radio-group v-model="form.status">
+                <el-radio value="draft">草稿</el-radio>
+                <el-radio value="published">已发布</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="visible = false">取消</el-button>
+            <el-button type="primary" @click="onSave">保存</el-button>
+          </template>
+        </el-dialog>
+      `
+    };
+
+    /* 项目表单对话框 */
+    const ProjectDialog = {
+      props: { modelValue: Boolean, project: { type: Object, default: null } },
+      emits: ["update:modelValue", "saved"],
+      setup() {
+        const projectStore = useProjectStore();
+        return { projectStore };
+      },
+      data() {
+        return {
+          form: { icon: "📦", name: "", desc: "", tech: "", status: "doing" },
+          rules: {
+            name: [{ required: true, message: "请输入项目名称", trigger: "blur" }],
+            desc: [{ required: true, message: "请输入项目简介", trigger: "blur" }]
+          }
+        };
+      },
+      computed: {
+        visible: {
+          get() { return this.modelValue; },
+          set(v) { this.$emit("update:modelValue", v); }
+        },
+        isEdit() { return !!this.project; },
+        title() { return this.isEdit ? "编辑项目" : "新增项目"; }
+      },
+      watch: {
+        modelValue(v) {
+          if (!v) return;
+          if (this.project) {
+            this.form = { ...this.project, tech: (this.project.tech || []).join(", ") };
+          } else {
+            this.form = { icon: "📦", name: "", desc: "", tech: "", status: "doing" };
+          }
+        }
+      },
+      methods: {
+        onSave() {
+          this.$refs.formRef.validate((valid) => {
+            if (!valid) return;
+            const techArr = this.form.tech.split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+            const payload = { icon: this.form.icon, name: this.form.name.trim(), desc: this.form.desc.trim(), tech: techArr, status: this.form.status };
+            if (this.isEdit) {
+              this.projectStore.updateProject(this.project.id, payload);
+              ElMessage.success("项目已更新");
+            } else {
+              this.projectStore.addProject(payload);
+              ElMessage.success("项目已新增");
+            }
+            this.visible = false;
+            this.$emit("saved");
+          });
+        }
+      },
+      template: `
+        <el-dialog v-model="visible" :title="title" width="560px" append-to-body>
+          <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+            <el-form-item label="图标">
+              <el-input v-model="form.icon" placeholder="例如：📦" style="width:140px;" />
+            </el-form-item>
+            <el-form-item label="项目名称" prop="name">
+              <el-input v-model="form.name" placeholder="请输入项目名称" />
+            </el-form-item>
+            <el-form-item label="简介" prop="desc">
+              <el-input v-model="form.desc" type="textarea" :rows="3" placeholder="请输入项目简介" />
+            </el-form-item>
+            <el-form-item label="技术栈">
+              <el-input v-model="form.tech" placeholder="用逗号分隔，如：Vue3, Vite" />
+            </el-form-item>
+            <el-form-item label="状态">
+              <el-radio-group v-model="form.status">
+                <el-radio value="doing">进行中</el-radio>
+                <el-radio value="done">已完成</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="visible = false">取消</el-button>
+            <el-button type="primary" @click="onSave">保存</el-button>
+          </template>
+        </el-dialog>
+      `
+    };
+
+    /* 时间线新增对话框（个人信息页，演示对话框在展示型页面的用法） */
+    const TimelineDialog = {
+      props: { modelValue: Boolean },
+      emits: ["update:modelValue", "saved"],
+      setup() {
+        const userStore = useUserStore();
+        return { userStore };
+      },
+      data() {
+        return {
+          form: { date: new Date().toISOString().slice(0, 10), title: "", content: "", type: "primary" },
+          rules: { title: [{ required: true, message: "请输入事件标题", trigger: "blur" }] }
+        };
+      },
+      computed: {
+        visible: {
+          get() { return this.modelValue; },
+          set(v) { this.$emit("update:modelValue", v); }
+        }
+      },
+      watch: {
+        modelValue(v) {
+          if (v) this.form = { date: new Date().toISOString().slice(0, 10), title: "", content: "", type: "primary" };
+        }
+      },
+      methods: {
+        onSave() {
+          this.$refs.formRef.validate((valid) => {
+            if (!valid) return;
+            this.userStore.addTimeline(this.form);
+            ElMessage.success("已添加到时间线");
+            this.visible = false;
+            this.$emit("saved");
+          });
+        }
+      },
+      template: `
+        <el-dialog v-model="visible" title="新增时间线事件" width="520px" append-to-body>
+          <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
+            <el-form-item label="日期">
+              <el-date-picker v-model="form.date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" />
+            </el-form-item>
+            <el-form-item label="标题" prop="title">
+              <el-input v-model="form.title" placeholder="事件标题" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="form.content" type="textarea" :rows="3" placeholder="事件描述" />
+            </el-form-item>
+            <el-form-item label="颜色">
+              <el-select v-model="form.type" style="width:160px;">
+                <el-option label="主要(蓝)" value="primary" />
+                <el-option label="成功(绿)" value="success" />
+                <el-option label="警告(黄)" value="warning" />
+                <el-option label="危险(红)" value="danger" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="visible = false">取消</el-button>
+            <el-button type="primary" @click="onSave">添加</el-button>
+          </template>
+        </el-dialog>
+      `
+    };
+
+    /* ================================================================
+       五、首页：个人信息(el-descriptions) + 时间线(el-timeline) + 技能 + 最新文章
+       ================================================================ */
+    const PersonInfo = {
+      setup() {
+        const userStore = useUserStore();
+        const { person, timelineSorted, skillCount } = storeToRefs(userStore);
+        return { person, timelineSorted, skillCount };
+      },
+      data() {
+        return {
+          showTimelineDialog: false,
+          fallbackAvatar: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="110" height="110">' +
+            '<rect width="110" height="110" fill="#dbeafe"/>' +
+            '<circle cx="55" cy="42" r="20" fill="#60a5fa"/>' +
+            '<path d="M20 96 a35 35 0 0 1 70 0" fill="#60a5fa"/>' +
+            "</svg>")
+        };
+      },
+      methods: {
+        onAvatarError(e) { if (e.target.src !== this.fallbackAvatar) e.target.src = this.fallbackAvatar; },
+        exportData() {
+          const payload = {
+            person: useUserStore().person,
+            skills: useUserStore().skills,
+            timeline: useUserStore().timeline,
+            projects: useProjectStore().projects,
+            articles: useArticleStore().articles,
+            exportedAt: new Date().toISOString()
+          };
+          const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = "personal-info.json"; a.click();
+          URL.revokeObjectURL(url);
+          ElMessage.success("已导出 JSON 文件");
+        },
+        resetData() {
+          ElMessageBox.confirm("确定重置用户、项目、文章与时间线数据为默认值？此操作不可撤销。", "重置确认", { type: "warning" })
+            .then(() => {
+              useUserStore().resetUser();
+              useProjectStore().resetProjects();
+              useArticleStore().resetArticles();
+              ElMessage.success("已重置为默认数据");
+            })
+            .catch(() => {});
+        }
+      },
+      template: `
+        <div>
+          <!-- el-card：卡片容器 -->
+          <el-card shadow="never">
+            <div class="avatar-row">
+              <!-- el-avatar：头像组件；这里用 el-avatar 承载图片 -->
+              <el-avatar :size="90" :src="person.avatar" @error="onAvatarError">
+                {{ person.name.slice(0, 1) }}
+              </el-avatar>
+              <div style="flex:1;min-width:240px;">
+                <h2 style="margin:0 0 6px;">{{ person.name }}</h2>
+                <!-- el-tag：标签组件 -->
+                <el-tag type="primary" effect="light">学号 {{ person.studentId }}</el-tag>
+                <el-tag type="success" effect="light" style="margin-left:8px;">{{ person.className }}</el-tag>
+                <el-tag type="info" effect="plain" style="margin-left:8px;">技能 {{ skillCount }} 项</el-tag>
+                <p style="margin:10px 0 0;color:var(--el-text-color-secondary);">{{ person.intro }}</p>
+              </div>
+            </div>
+            <el-divider />
+            <!-- el-descriptions：描述列表组件，展示结构化字段 -->
+            <el-descriptions title="个人信息" :column="3" border>
+              <el-descriptions-item label="姓名">{{ person.name }}</el-descriptions-item>
+              <el-descriptions-item label="学号">{{ person.studentId }}</el-descriptions-item>
+              <el-descriptions-item label="专业班级">{{ person.className }}</el-descriptions-item>
+              <el-descriptions-item label="性别">{{ person.gender }}</el-descriptions-item>
+              <el-descriptions-item label="生日">{{ person.birthday }}</el-descriptions-item>
+              <el-descriptions-item label="邮箱">{{ person.email }}</el-descriptions-item>
+            </el-descriptions>
+            <div style="margin-top:16px;">
+              <!-- el-tooltip：提示组件 -->
+              <el-tooltip content="导出所有 store 数据为 JSON" placement="top">
+                <el-button type="primary" @click="exportData">
+                  <el-icon><Download /></el-icon>导出 JSON
+                </el-button>
+              </el-tooltip>
+              <el-button @click="$router.push({ name: 'Admin' })">
+                <el-icon><Edit /></el-icon>编辑个人信息
+              </el-button>
+              <el-button type="danger" plain @click="resetData">
+                <el-icon><RefreshLeft /></el-icon>重置数据
+              </el-button>
+            </div>
+          </el-card>
+
+          <el-card shadow="never" style="margin-top:20px;">
+            <template #header>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span>🕐 成长时间线</span>
+                <el-button type="primary" size="small" @click="showTimelineDialog = true">
+                  <el-icon><Plus /></el-icon>新增事件
+                </el-button>
+              </div>
+            </template>
+            <!-- el-timeline + el-timeline-item：时间线组件，按时间顺序展示学习/实验历程 -->
+            <el-timeline>
+              <el-timeline-item
+                v-for="(item, idx) in timelineSorted"
+                :key="idx"
+                :timestamp="item.date"
+                :type="item.type"
+                placement="top"
+                hollow>
+                <h4 style="margin:0 0 4px;">{{ item.title }}</h4>
+                <p style="margin:0;color:var(--el-text-color-secondary);">{{ item.content }}</p>
+              </el-timeline-item>
+            </el-timeline>
+            <el-empty v-if="timelineSorted.length === 0" description="暂无时间线记录" :image-size="80" />
+          </el-card>
+
+          <TimelineDialog v-model="showTimelineDialog" />
+        </div>
+      `
+    };
+
+    const SkillManager = {
+      setup() {
+        const userStore = useUserStore();
+        const { skills, skillCount } = storeToRefs(userStore);
+        const { addSkill, removeSkill } = userStore;
+        return { skills, skillCount, addSkill, removeSkill };
+      },
+      data() { return { searchKey: "", newSkill: "" }; },
+      computed: {
+        filterSkillList() {
+          const key = this.searchKey.trim().toLowerCase();
+          if (!key) return this.skills;
+          return this.skills.filter((s) => s.toLowerCase().includes(key));
+        }
+      },
+      methods: {
+        onRemove(skill) {
+          ElMessageBox.confirm(`确定删除技能「${skill}」？`, "删除确认", { type: "warning" })
+            .then(() => { this.removeSkill(skill); ElMessage.success("已删除"); })
+            .catch(() => {});
+        }
+      },
+      template: `
+        <el-card shadow="never" style="margin-top:20px;">
+          <template #header>
+            <span>🛠️ 技能管理 <el-tag size="small" type="info">共 {{ skillCount }} 项</el-tag></span>
+          </template>
+          <!-- el-input：输入框组件（带清空、搜索） -->
+          <el-input v-model="searchKey" placeholder="搜索技能" clearable style="margin-bottom:14px;">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <div class="tag-row">
+            <el-tooltip v-for="skill in filterSkillList" :key="skill" content="点击删除" placement="top">
+              <!-- el-tag 可关闭，用 tag 的 close 事件执行删除 action -->
+              <el-tag closable size="large" @close="onRemove(skill)">{{ skill }}</el-tag>
+            </el-tooltip>
+            <el-text v-if="filterSkillList.length === 0" type="info">没有匹配的技能</el-text>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:10px;">
+            <el-input v-model="newSkill" placeholder="输入新技能后回车添加" style="max-width:280px;" @keyup.enter="onAddSkill" />
+            <el-button type="primary" @click="onAddSkill"><el-icon><Plus /></el-icon>添加</el-button>
+          </div>
+        </el-card>
+      `,
+      methods: {
+        onRemove(skill) {
+          ElMessageBox.confirm(`确定删除技能「${skill}」？`, "删除确认", { type: "warning" })
+            .then(() => { this.removeSkill(skill); ElMessage.success("已删除"); })
+            .catch(() => {});
+        },
+        onAddSkill() {
+          const res = this.addSkill(this.newSkill);
+          if (!res.ok) { ElMessage.warning(res.msg); return; }
+          ElMessage.success("已添加技能");
+          this.newSkill = "";
+        }
+      }
+    };
+
+    const HomeView = {
+      setup() {
+        const articleStore = useArticleStore();
+        const { publishedArticles } = storeToRefs(articleStore);
+        return { publishedArticles };
+      },
+      computed: {
+        latestArticles() { return this.publishedArticles.slice(0, 3); }
+      },
+      methods: {
+        openArticle(article) { this.$router.push({ name: "ArticleDetail", params: { id: article.id } }); }
+      },
+      template: `
+        <div>
+          <PersonInfo />
+          <SkillManager />
+          <el-card shadow="never" style="margin-top:20px;">
+            <template #header>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span>📰 最新文章</span>
+                <el-button text type="primary" @click="$router.push({ name: 'ArticleList' })">查看全部 →</el-button>
+              </div>
+            </template>
+            <div class="card-grid">
+              <el-card v-for="a in latestArticles" :key="a.id" shadow="hover" @click="openArticle(a)" style="cursor:pointer;">
+                <h3 style="margin:0 0 8px;">{{ a.cover }} {{ a.title }}</h3>
+                <p style="margin:0 0 10px;color:var(--el-text-color-secondary);">{{ a.summary }}</p>
+                <el-tag size="small" type="info">{{ a.category }}</el-tag>
+                <el-tag size="small" style="margin-left:6px;">👁 {{ a.views }}</el-tag>
+              </el-card>
+            </div>
+            <el-empty v-if="latestArticles.length === 0" description="暂无已发布文章" />
+          </el-card>
+        </div>
+      `
+    };
+
+    /* ================================================================
+       六、项目中心
+       ================================================================ */
+    const ProjectsLayout = {
+      template: `
+        <div>
+          <h2 style="margin-top:0;">📁 项目中心</h2>
+          <el-tabs model-value="/projects" @tab-change="onTab">
+            <el-tab-pane label="项目列表" name="/projects" />
+            <el-tab-pane label="项目统计" name="/projects/stats" />
+          </el-tabs>
+          <router-view />
+        </div>
+      `,
+      methods: {
+        onTab(name) { this.$router.push(name); }
+      }
+    };
+
+    const ProjectListView = {
+      setup() {
+        const projectStore = useProjectStore();
+        const { projects, total, doneCount, doingCount } = storeToRefs(projectStore);
+        const { deleteProject } = projectStore;
+        return { projects, total, doneCount, doingCount, deleteProject };
+      },
+      data() { return { filter: "all", dialogVisible: false, editing: null }; },
+      computed: {
+        filteredProjects() {
+          if (this.filter === "all") return this.projects;
+          return this.projects.filter((p) => p.status === this.filter);
+        }
+      },
+      methods: {
+        goDetail(project) { this.$router.push({ name: "ProjectDetail", params: { id: project.id } }); },
+        openNew() { this.editing = null; this.dialogVisible = true; },
+        openEdit(project) { this.editing = project; this.dialogVisible = true; },
+        onDelete(project) {
+          ElMessageBox.confirm(`确定删除项目「${project.name}」？`, "删除确认", { type: "warning" })
+            .then(() => { this.deleteProject(project.id); ElMessage.success("已删除"); })
+            .catch(() => {});
+        }
+      },
+      template: `
+        <div>
+          <div class="filter-row">
+            <!-- el-radio-group：单选按钮组，用于项目状态筛选 -->
+            <el-radio-group v-model="filter">
+              <el-radio-button value="all">全部（{{ total }}）</el-radio-button>
+              <el-radio-button value="doing">进行中（{{ doingCount }}）</el-radio-button>
+              <el-radio-button value="done">已完成（{{ doneCount }}）</el-radio-button>
+            </el-radio-group>
+            <el-button type="primary" @click="openNew"><el-icon><Plus /></el-icon>新增项目</el-button>
+          </div>
+          <div class="card-grid">
+            <el-card v-for="p in filteredProjects" :key="p.id" shadow="hover">
+              <template #header>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:20px;">{{ p.icon }}</span>
+                  <strong>{{ p.name }}</strong>
+                  <el-tag :type="p.status === 'done' ? 'success' : 'warning'" size="small" style="margin-left:auto;">
+                    {{ p.status === "done" ? "已完成" : "进行中" }}
+                  </el-tag>
+                </div>
+              </template>
+              <!-- el-text：文本组件，统一排版 -->
+              <el-text line-clamp="2">{{ p.desc }}</el-text>
+              <div class="tag-row" style="margin-top:10px;">
+                <el-tag v-for="t in p.tech" :key="t" size="small" type="info" effect="plain">{{ t }}</el-tag>
+              </div>
+              <template #footer>
+                <el-button size="small" @click="goDetail(p)">详情</el-button>
+                <el-button size="small" type="warning" plain @click="openEdit(p)">编辑</el-button>
+                <el-button size="small" type="danger" plain @click="onDelete(p)">删除</el-button>
+              </template>
+            </el-card>
+          </div>
+          <el-empty v-if="filteredProjects.length === 0" description="没有符合筛选条件的项目" />
+          <ProjectDialog v-model="dialogVisible" :project="editing" />
+        </div>
+      `
+    };
+
+    const ProjectDetailView = {
+      setup() { const { projects } = storeToRefs(useProjectStore()); return { projects }; },
+      computed: {
+        id() { return Number(this.$route.params.id); },
+        project() { return this.projects.find((p) => p.id === this.id); }
+      },
+      mounted() {
+        if (!this.project) {
+          ElMessage.warning("无效的项目地址");
+          this.$router.replace({ name: "ProjectList" });
+        }
+      },
+      methods: {
+        goBack() { this.$router.go(-1); },
+        goList() { this.$router.push({ name: "ProjectList" }); }
+      },
+      template: `
+        <el-card v-if="project" shadow="never">
+          <h2 style="margin-top:0;">{{ project.icon }} {{ project.name }}</h2>
+          <el-descriptions :column="1" border style="margin-bottom:16px;">
+            <el-descriptions-item label="状态">
+              <el-tag :type="project.status === 'done' ? 'success' : 'warning'">
+                {{ project.status === "done" ? "已完成" : "进行中" }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item label="简介">{{ project.desc }}</el-descriptions-item>
+            <el-descriptions-item label="技术栈">
+              <el-tag v-for="t in project.tech" :key="t" size="small" style="margin-right:6px;">{{ t }}</el-tag>
+            </el-descriptions-item>
+          </el-descriptions>
+          <el-button @click="goBack">← 返回上一页</el-button>
+          <el-button @click="goList">返回列表</el-button>
+        </el-card>
+        <el-result v-else icon="warning" title="项目不存在" sub-title="请返回项目列表查看" />
+      `
+    };
+
+    const ProjectStatsView = {
+      setup() {
+        const projectStore = useProjectStore();
+        const { total, doneCount, doingCount, doneRate, techStats } = storeToRefs(projectStore);
+        return { total, doneCount, doingCount, doneRate, techStats };
+      },
+      template: `
+        <div>
+          <!-- el-row / el-col：栅格布局组件 -->
+          <el-row :gutter="16">
+            <el-col :xs="24" :sm="8">
+              <el-card shadow="never"><el-statistic title="总项目数" :value="total" /></el-card>
+            </el-col>
+            <el-col :xs="24" :sm="8">
+              <el-card shadow="never"><el-statistic title="已完成" :value="doneCount" /></el-card>
+            </el-col>
+            <el-col :xs="24" :sm="8">
+              <el-card shadow="never"><el-statistic title="进行中" :value="doingCount" /></el-card>
+            </el-col>
+          </el-row>
+          <el-card shadow="never" style="margin-top:20px;">
+            <template #header>项目完成率</template>
+            <!-- el-progress：进度条组件 -->
+            <el-progress :percentage="doneRate" :stroke-width="18" text-inside status="success" />
+          </el-card>
+          <el-card shadow="never" style="margin-top:20px;">
+            <template #header>技术标签分布</template>
+            <div class="tag-row">
+              <el-tag v-for="[tech, count] in techStats" :key="tech" size="large">{{ tech }} ({{ count }})</el-tag>
+            </div>
+            <el-empty v-if="techStats.length === 0" description="暂无数据" :image-size="80" />
+          </el-card>
+        </div>
+      `
+    };
+
+    /* ================================================================
+       七、文章模块
+       ================================================================ */
+    const ArticleListView = {
+      setup() {
+        const articleStore = useArticleStore();
+        const { publishedArticles, publishedCount, categories } = storeToRefs(articleStore);
+        return { publishedArticles, publishedCount, categories };
+      },
+      data() { return { keyword: "", category: "all" }; },
+      computed: {
+        list() {
+          let arr = this.publishedArticles;
+          if (this.category !== "all") arr = arr.filter((a) => a.category === this.category);
+          const key = this.keyword.trim().toLowerCase();
+          if (key) {
+            arr = arr.filter((a) =>
+              a.title.toLowerCase().includes(key) ||
+              a.summary.toLowerCase().includes(key) ||
+              a.tags.some((t) => t.toLowerCase().includes(key)));
+          }
+          return [...arr].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+        }
+      },
+      methods: {
+        openArticle(article) { this.$router.push({ name: "ArticleDetail", params: { id: article.id } }); }
+      },
+      template: `
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <h2 style="margin:0;">📰 文章列表</h2>
+            <el-button type="primary" @click="$router.push({ name: 'Admin' })"><el-icon><Edit /></el-icon>进入后台管理</el-button>
+          </div>
+          <div class="filter-row" style="margin-top:16px;">
+            <el-input v-model="keyword" placeholder="搜索标题 / 摘要 / 标签" clearable style="max-width:320px;">
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+            <el-select v-model="category" style="width:160px;">
+              <el-option label="全部分类" value="all" />
+              <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
+            </el-select>
+            <el-tag type="info">共 {{ publishedCount }} 篇已发布</el-tag>
+          </div>
+          <div class="card-grid">
+            <el-card v-for="a in list" :key="a.id" shadow="hover" style="cursor:pointer;" @click="openArticle(a)">
+              <template #header>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span style="font-size:20px;">{{ a.cover }}</span>
+                  <strong>{{ a.title }}</strong>
+                </div>
+              </template>
+              <el-text line-clamp="2">{{ a.summary }}</el-text>
+              <div class="tag-row" style="margin-top:10px;">
+                <el-tag size="small">{{ a.category }}</el-tag>
+                <el-tag v-for="t in a.tags" :key="t" size="small" type="info" effect="plain">#{{ t }}</el-tag>
+              </div>
+              <div style="margin-top:10px;color:var(--el-text-color-secondary);font-size:13px;">
+                ✍️ {{ a.author }} · 📅 {{ a.createdAt }} · 👁 {{ a.views }}
+              </div>
+            </el-card>
+          </div>
+          <el-empty v-if="list.length === 0" description="没有匹配的文章" />
+        </div>
+      `
+    };
+
+    const ArticleDetailView = {
+      setup() { const { articles } = storeToRefs(useArticleStore()); return { articles }; },
+      computed: {
+        id() { return Number(this.$route.params.id); },
+        article() { return this.articles.find((a) => a.id === this.id); }
+      },
+      mounted() {
+        if (!this.article) {
+          ElMessage.warning("文章不存在或已被删除");
+          this.$router.replace({ name: "ArticleList" });
+          return;
+        }
+        useArticleStore().addView(this.id);
+      },
+      methods: {
+        goBack() { this.$router.go(-1); },
+        goList() { this.$router.push({ name: "ArticleList" }); }
+      },
+      template: `
+        <el-card v-if="article" shadow="never">
+          <h2 style="margin-top:0;">{{ article.cover }} {{ article.title }}</h2>
+          <div style="margin-bottom:16px;">
+            <el-tag size="small">{{ article.category }}</el-tag>
+            <el-tag size="small" :type="article.status === 'published' ? 'success' : 'warning'" style="margin-left:6px;">
+              {{ article.status === "published" ? "已发布" : "草稿" }}
+            </el-tag>
+            <el-tag size="small" type="info" effect="plain" style="margin-left:6px;">✍️ {{ article.author }}</el-tag>
+            <el-tag size="small" type="info" effect="plain" style="margin-left:6px;">📅 {{ article.createdAt }}</el-tag>
+            <el-tag size="small" type="info" effect="plain" style="margin-left:6px;">👁 {{ article.views }}</el-tag>
+          </div>
+          <el-divider />
+          <div style="line-height:2;white-space:pre-line;">{{ article.content }}</div>
+          <div class="tag-row" style="margin-top:18px;">
+            <el-tag v-for="t in article.tags" :key="t" size="small" type="info" effect="plain">#{{ t }}</el-tag>
+          </div>
+          <div style="margin-top:24px;">
+            <el-button @click="goBack">← 返回上一页</el-button>
+            <el-button @click="goList">返回文章列表</el-button>
+          </div>
+        </el-card>
+        <el-result v-else icon="warning" title="文章不存在" sub-title="请返回文章列表查看" />
+      `
+    };
+
+    /* ================================================================
+       八、后台管理（el-container + el-aside + el-menu 竖向导航）
+       ================================================================ */
+    const AdminLayout = {
+      data() { return { active: "/admin/articles" }; },
+      computed: {
+        menuActive: {
+          get() { return this.$route.path; },
+          set() {}
+        }
+      },
+      template: `
+        <el-container style="min-height:520px;">
+          <el-aside width="200px" class="admin-aside">
+            <!-- el-menu 竖向模式 + router -->
+            <el-menu :default-active="$route.path" router>
+              <el-menu-item index="/admin/articles">
+                <el-icon><Notebook /></el-icon><span>文章管理</span>
+              </el-menu-item>
+              <el-menu-item index="/admin/projects">
+                <el-icon><Folder /></el-icon><span>项目管理</span>
+              </el-menu-item>
+              <el-menu-item index="/admin/profile">
+                <el-icon><User /></el-icon><span>个人资料</span>
+              </el-menu-item>
+            </el-menu>
+          </el-aside>
+          <el-main>
+            <router-view />
+          </el-main>
+        </el-container>
+      `
+    };
+
+    /* 后台 · 文章管理：el-table + 对话框增删改 */
+    const AdminArticlesView = {
+      setup() {
+        const articleStore = useArticleStore();
+        const { sortedArticles, total, publishedCount, draftCount } = storeToRefs(articleStore);
+        const { togglePublish, deleteArticle, resetArticles } = articleStore;
+        return { sortedArticles, total, publishedCount, draftCount, togglePublish, deleteArticle, resetArticles };
+      },
+      data() { return { dialogVisible: false, editing: null }; },
+      methods: {
+        openNew() { this.editing = null; this.dialogVisible = true; },
+        openEdit(article) { this.editing = article; this.dialogVisible = true; },
+        onToggle(article) {
+          const next = this.togglePublish(article.id);
+          ElMessage.success(next === "published" ? "已发布" : "已转为草稿");
+        },
+        onDelete(article) {
+          ElMessageBox.confirm(`确定删除文章「${article.title}」？`, "删除确认", { type: "warning" })
+            .then(() => { this.deleteArticle(article.id); ElMessage.success("已删除"); })
+            .catch(() => {});
+        },
+        onReset() {
+          ElMessageBox.confirm("确定把文章数据重置为默认值？", "重置确认", { type: "warning" })
+            .then(() => { this.resetArticles(); ElMessage.success("已重置"); })
+            .catch(() => {});
+        },
+        goDetail(row) { this.$router.push({ name: "ArticleDetail", params: { id: row.id } }); }
+      },
+      template: `
+        <div class="admin-body">
+          <div class="admin-toolbar">
+            <h3 style="margin:0;">文章管理</h3>
+            <div>
+              <el-button type="primary" @click="openNew"><el-icon><Plus /></el-icon>新增文章</el-button>
+              <el-button type="danger" plain @click="onReset">重置文章</el-button>
+            </div>
+          </div>
+          <el-row :gutter="16" style="margin-bottom:16px;">
+            <el-col :span="8"><el-card shadow="never"><el-statistic title="文章总数" :value="total" /></el-card></el-col>
+            <el-col :span="8"><el-card shadow="never"><el-statistic title="已发布" :value="publishedCount" /></el-card></el-col>
+            <el-col :span="8"><el-card shadow="never"><el-statistic title="草稿" :value="draftCount" /></el-card></el-col>
+          </el-row>
+          <!-- el-table + el-table-column：表格组件，展示文章列表并承载行内操作 -->
+          <el-table :data="sortedArticles" border stripe style="width:100%;">
+            <el-table-column prop="cover" label="封面" width="70" align="center" />
+            <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
+            <el-table-column prop="category" label="分类" width="110" />
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'published' ? 'success' : 'warning'" size="small">
+                  {{ row.status === "published" ? "已发布" : "草稿" }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="日期" width="120" />
+            <el-table-column prop="views" label="浏览" width="80" align="center" />
+            <el-table-column label="操作" width="230" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" @click="goDetail(row)">查看</el-button>
+                <el-button size="small" type="warning" plain @click="openEdit(row)">编辑</el-button>
+                <el-button size="small" :type="row.status === 'published' ? 'info' : 'success'" plain @click="onToggle(row)">
+                  {{ row.status === "published" ? "下架" : "发布" }}
+                </el-button>
+                <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+              </template>
+            </el-table-column>
+            <template #empty><el-empty description="暂无文章，点击「新增文章」创建" /></template>
+          </el-table>
+          <ArticleDialog v-model="dialogVisible" :article="editing" />
+        </div>
+      `
+    };
+
+    /* 后台 · 项目管理 */
+    const AdminProjectsView = {
+      setup() {
+        const projectStore = useProjectStore();
+        const { projects, total, doneCount, doingCount } = storeToRefs(projectStore);
+        const { deleteProject, resetProjects } = projectStore;
+        return { projects, total, doneCount, doingCount, deleteProject, resetProjects };
+      },
+      data() { return { dialogVisible: false, editing: null }; },
+      methods: {
+        openNew() { this.editing = null; this.dialogVisible = true; },
+        openEdit(p) { this.editing = p; this.dialogVisible = true; },
+        onDelete(p) {
+          ElMessageBox.confirm(`确定删除项目「${p.name}」？`, "删除确认", { type: "warning" })
+            .then(() => { this.deleteProject(p.id); ElMessage.success("已删除"); })
+            .catch(() => {});
+        },
+        onReset() {
+          ElMessageBox.confirm("确定把项目数据重置为默认值？", "重置确认", { type: "warning" })
+            .then(() => { this.resetProjects(); ElMessage.success("已重置"); })
+            .catch(() => {});
+        }
+      },
+      template: `
+        <div class="admin-body">
+          <div class="admin-toolbar">
+            <h3 style="margin:0;">项目管理</h3>
+            <div>
+              <el-button type="primary" @click="openNew"><el-icon><Plus /></el-icon>新增项目</el-button>
+              <el-button type="danger" plain @click="onReset">重置项目</el-button>
+            </div>
+          </div>
+          <el-row :gutter="16" style="margin-bottom:16px;">
+            <el-col :span="8"><el-card shadow="never"><el-statistic title="项目总数" :value="total" /></el-card></el-col>
+            <el-col :span="8"><el-card shadow="never"><el-statistic title="已完成" :value="doneCount" /></el-card></el-col>
+            <el-col :span="8"><el-card shadow="never"><el-statistic title="进行中" :value="doingCount" /></el-card></el-col>
+          </el-row>
+          <el-table :data="projects" border stripe style="width:100%;">
+            <el-table-column prop="icon" label="图标" width="70" align="center" />
+            <el-table-column prop="name" label="项目名称" min-width="160" />
+            <el-table-column prop="desc" label="简介" min-width="240" show-overflow-tooltip />
+            <el-table-column label="技术栈" min-width="180">
+              <template #default="{ row }">
+                <el-tag v-for="t in row.tech" :key="t" size="small" type="info" effect="plain" style="margin-right:4px;">{{ t }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'done' ? 'success' : 'warning'" size="small">
+                  {{ row.status === "done" ? "已完成" : "进行中" }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" type="warning" plain @click="openEdit(row)">编辑</el-button>
+                <el-button size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+              </template>
+            </el-table-column>
+            <template #empty><el-empty description="暂无项目" /></template>
+          </el-table>
+          <ProjectDialog v-model="dialogVisible" :project="editing" />
+        </div>
+      `
+    };
+
+    /* 后台 · 个人资料编辑（el-form 表单校验） */
+    const AdminProfileView = {
+      setup() {
+        const userStore = useUserStore();
+        const { person } = storeToRefs(userStore);
+        return { person };
+      },
+      data() {
+        return {
+          form: { ...useUserStore().person },
+          rules: {
+            name: [{ required: true, message: "请输入姓名", trigger: "blur" }],
+            studentId: [{ required: true, message: "请输入学号", trigger: "blur" }],
+            email: [{ type: "email", message: "邮箱格式不正确", trigger: "blur" }]
+          }
+        };
+      },
+      methods: {
+        onSave() {
+          this.$refs.formRef.validate((valid) => {
+            if (!valid) return;
+            useUserStore().updatePerson(this.form);
+            ElMessage.success("保存成功");
+            this.$router.push({ name: "Home" });
+          });
+        },
+        onReset() { this.form = { ...useUserStore().person }; }
+      },
+      template: `
+        <div class="admin-body">
+          <h3 style="margin-top:0;">个人资料</h3>
+          <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width:560px;">
+            <el-form-item label="头像地址">
+              <el-input v-model="form.avatar" placeholder="图片 URL" />
+            </el-form-item>
+            <el-form-item label="姓名" prop="name">
+              <el-input v-model="form.name" />
+            </el-form-item>
+            <el-form-item label="学号" prop="studentId">
+              <el-input v-model="form.studentId" />
+            </el-form-item>
+            <el-form-item label="专业班级">
+              <el-input v-model="form.className" />
+            </el-form-item>
+            <el-form-item label="性别">
+              <el-radio-group v-model="form.gender">
+                <el-radio value="男">男</el-radio>
+                <el-radio value="女">女</el-radio>
+                <el-radio value="保密">保密</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="生日">
+              <el-date-picker v-model="form.birthday" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" />
+            </el-form-item>
+            <el-form-item label="邮箱" prop="email">
+              <el-input v-model="form.email" />
+            </el-form-item>
+            <el-form-item label="个人简介">
+              <el-input v-model="form.intro" type="textarea" :rows="3" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="onSave">保存</el-button>
+              <el-button @click="onReset">还原</el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      `
+    };
+
+    /* ================================================================
+       九、登录 / Store 面板 / 关于 / 404
+       ================================================================ */
+    const LoginView = {
+      data() {
+        return {
+          form: { password: "" },
+          rules: { password: [{ required: true, message: "请输入密码", trigger: "blur" }] },
+          loading: false
+        };
+      },
+      computed: {
+        redirect() { return this.$route.query.redirect || "/admin/articles"; }
+      },
+      methods: {
+        onSubmit() {
+          this.$refs.formRef.validate((valid) => {
+            if (!valid) return;
+            if (useUserStore().login(this.form.password)) {
+              ElMessage.success("登录成功");
+              this.$router.push(this.redirect);
+            } else {
+              ElMessage.error("密码错误（默认密码：admin）");
+            }
+          });
+        }
+      },
+      template: `
+        <el-card shadow="never" style="max-width:420px;margin:40px auto;">
+          <template #header><span style="font-size:16px;">🔐 管理员登录</span></template>
+          <el-form ref="formRef" :model="form" :rules="rules" label-width="60px" @submit.prevent>
+            <el-form-item label="密码" prop="password">
+              <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" @keyup.enter="onSubmit" />
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="onSubmit">登录</el-button>
+              <el-button @click="$router.push({ name: 'Home' })">取消</el-button>
+            </el-form-item>
+          </el-form>
+          <el-alert title="默认密码为 admin，登录状态由 userStore 管理并持久化。" type="info" :closable="false" show-icon />
+        </el-card>
+      `
+    };
+
+    const StorePanelView = {
+      setup() {
+        return {
+          userStore: useUserStore(),
+          projectStore: useProjectStore(),
+          articleStore: useArticleStore()
+        };
+      },
+      computed: {
+        userState() {
+          const s = this.userStore;
+          return { isLoggedIn: s.isLoggedIn, username: s.username, isDarkMode: s.isDarkMode, skills: s.skills, person: s.person };
+        },
+        projectState() { return { projects: this.projectStore.projects }; },
+        articleState() { return { articles: this.articleStore.articles }; }
+      },
+      methods: {
+        json(obj) { return JSON.stringify(obj, null, 2); },
+        addDemoArticle() { this.articleStore.addArticle({ title: "面板新增文章 " + new Date().toLocaleTimeString(), content: "由 Store 面板调用 articleStore.addArticle 创建。", status: "draft" }); ElMessage.success("已调用 addArticle"); },
+        addDemoProject() { this.projectStore.addProject({ name: "面板新增项目 " + new Date().toLocaleTimeString() }); ElMessage.success("已调用 addProject"); },
+        addDemoSkill() { const r = this.userStore.addSkill("Demo-" + Math.floor(Math.random() * 1000)); ElMessage[r.ok ? "success" : "warning"](r.ok ? "已调用 addSkill" : r.msg); },
+        toggleLogin() { this.userStore.isLoggedIn ? this.userStore.logout() : this.userStore.login("admin"); ElMessage.success("已切换登录状态"); }
+      },
+      template: `
+        <div>
+          <h2 style="margin-top:0;">🧪 Store 状态面板 <el-tag type="success" size="small">Pinia DevTools</el-tag></h2>
+          <el-alert type="info" :closable="false" show-icon
+            title="此处实时展示三个 Pinia Store 的 state 快照；也可打开浏览器 Vue DevTools 的 Pinia 面板查看 mutation 与时间旅行。"
+            style="margin-bottom:16px;" />
+          <el-row :gutter="16">
+            <el-col :xs="24" :md="8">
+              <el-card shadow="never">
+                <template #header>userStore <el-tag size="small" type="info">id: user</el-tag></template>
+                <div class="store-json">{{ json(userState) }}</div>
+                <div class="store-actions">
+                  <el-button size="small" @click="toggleLogin">切换登录</el-button>
+                  <el-button size="small" type="success" @click="addDemoSkill">addSkill</el-button>
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :md="8">
+              <el-card shadow="never">
+                <template #header>projectStore <el-tag size="small" type="info">id: project</el-tag></template>
+                <div class="store-json">{{ json(projectState) }}</div>
+                <div class="store-actions">
+                  <el-button size="small" type="success" @click="addDemoProject">addProject</el-button>
+                </div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :md="8">
+              <el-card shadow="never">
+                <template #header>articleStore <el-tag size="small" type="info">id: article</el-tag></template>
+                <div class="store-json">{{ json(articleState) }}</div>
+                <div class="store-actions">
+                  <el-button size="small" type="success" @click="addDemoArticle">addArticle</el-button>
+                </div>
+              </el-card>
+            </el-col>
+          </el-row>
+        </div>
+      `
+    };
+
+    const AboutView = {
+      template: `
+        <el-card shadow="never">
+          <h2 style="margin-top:0;">关于本站</h2>
+          <p style="line-height:1.9;">
+            本站是 Web 前端综合实验成果：在 Vue 3 + Vue Router 4 的基础上，
+            引入 Pinia 做状态管理，并整合 Element Plus 组件库完成界面搭建。
+          </p>
+          <el-divider />
+          <el-descriptions title="技术栈" :column="1" border>
+            <el-descriptions-item label="框架">Vue 3（Options API）</el-descriptions-item>
+            <el-descriptions-item label="路由">Vue Router 4（Hash 模式）</el-descriptions-item>
+            <el-descriptions-item label="状态管理">Pinia 2（user / project / article 三个 Store）</el-descriptions-item>
+            <el-descriptions-item label="UI 组件库">Element Plus 2（布局 / 菜单 / 时间线 / 表格 / 表单 / 对话框等）</el-descriptions-item>
+            <el-descriptions-item label="持久化">localStorage</el-descriptions-item>
+          </el-descriptions>
+          <p style="margin-top:16px;line-height:1.9;color:var(--el-text-color-secondary);">
+            后台管理页面受路由守卫保护，未登录访问会自动跳转到登录页。
+          </p>
+        </el-card>
+      `
+    };
+
+    const NotFoundView = {
+      template: `
+        <el-result icon="warning" title="404" sub-title="抱歉，页面未找到">
+          <template #extra>
+            <el-button type="primary" @click="$router.push({ name: 'Home' })">返回首页</el-button>
+          </template>
+        </el-result>
+      `
+    };
+
+    /* ================================================================
+       十、路由配置
+       ================================================================ */
+    const routes = [
+      { path: "/", redirect: "/home" },
+      { path: "/home", name: "Home", component: HomeView, meta: { title: "首页" } },
+      {
+        path: "/projects", name: "Projects", component: ProjectsLayout, meta: { title: "项目中心" },
+        children: [
+          { path: "", name: "ProjectList", component: ProjectListView, meta: { title: "项目列表" } },
+          { path: "stats", name: "ProjectStats", component: ProjectStatsView, meta: { title: "项目统计" } },
+          { path: ":id", name: "ProjectDetail", component: ProjectDetailView, meta: { title: "项目详情" } }
+        ]
+      },
+      { path: "/articles", name: "ArticleList", component: ArticleListView, meta: { title: "文章列表" } },
+      { path: "/articles/:id", name: "ArticleDetail", component: ArticleDetailView, meta: { title: "文章详情" } },
+      { path: "/stores", name: "StorePanel", component: StorePanelView, meta: { title: "Store 面板" } },
+      { path: "/about", name: "About", component: AboutView, meta: { title: "关于" } },
+      { path: "/login", name: "Login", component: LoginView, meta: { title: "登录", public: true } },
+      {
+        path: "/admin", name: "Admin", component: AdminLayout, meta: { title: "后台管理", requiresAuth: true },
+        children: [
+          { path: "", name: "AdminHome", redirect: "/admin/articles" },
+          { path: "articles", name: "AdminArticles", component: AdminArticlesView, meta: { title: "文章管理" } },
+          { path: "projects", name: "AdminProjects", component: AdminProjectsView, meta: { title: "项目管理" } },
+          { path: "profile", name: "AdminProfile", component: AdminProfileView, meta: { title: "个人资料" } }
+        ]
+      },
+      { path: "/:pathMatch(.*)*", name: "NotFound", component: NotFoundView, meta: { title: "404" } }
+    ];
+
+    const router = createRouter({
+      history: createWebHashHistory(),
+      routes
+    });
+
+    const pinia = createPinia();
+
+    /* ---------- 路由守卫：标题 + 基于登录状态的访问控制（任务 5） ---------- */
+    router.beforeEach((to, from, next) => {
+      document.title = to.meta.title ? `${to.meta.title} - 个人主页` : "个人主页";
+      // 组件之外使用 store 需显式传入 pinia，避免 activePinia 尚未就绪
+      const userStore = useUserStore(pinia);
+      if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+        next({ name: "Login", query: { redirect: to.fullPath } });
+        return;
+      }
+      if (to.name === "Login" && userStore.isLoggedIn) {
+        next({ name: "Admin" });
+        return;
+      }
+      next();
+    });
+
+    /* ================================================================
+       十一、根实例：注册 Pinia / Router / Element Plus
+       ================================================================ */
+    const app = createApp({
+      setup() {
+        const userStore = useUserStore();
+        const { isLoggedIn } = storeToRefs(userStore);
+        // 主题变化时同步到 <html>，供 Element Plus 与自定义样式使用
+        watch(() => userStore.isDarkMode, () => userStore.applyTheme(), { immediate: true });
+        return { isLoggedIn };
+      },
+      template: `
+        <el-container direction="vertical" style="min-height:100vh;">
+          <AppHeader />
+          <el-main style="padding:0;">
+            <main class="app-main">
+              <router-view />
+            </main>
+          </el-main>
+          <AppFooter />
+          <el-backtop :right="30" :bottom="30" />
+        </el-container>
+      `
+    });
+
+    app.component("AppHeader", AppHeader);
+    app.component("AppFooter", AppFooter);
+    app.component("ArticleDialog", ArticleDialog);
+    app.component("ProjectDialog", ProjectDialog);
+    app.component("TimelineDialog", TimelineDialog);
+    app.component("PersonInfo", PersonInfo);
+    app.component("SkillManager", SkillManager);
+
+    // 注册 Element Plus 图标（全局）
+    for (const [key, comp] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, comp);
+    }
+
+    // 注意顺序：先 Pinia，再 Router，最后 Element Plus（含中文语言包）
+    app.use(pinia);
+    app.use(router);
+    app.use(ElementPlus, { locale: zhCn });
+    app.mount("#app");
+  </script>
+</body>
+</html>
